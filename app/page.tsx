@@ -1,5 +1,6 @@
 'use client';
 
+import BottomNav from '../components/BottomNav';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../lib/supabase';
@@ -29,10 +30,30 @@ export default function Home() {
   // Estados para edição
   const [editingMatch, setEditingMatch] = useState<Match | null>(null);
 
-  // 1. CHECAR SESSÃO DO USUÁRIO
+  // 1. CHECAR SESSÃO DO USUÁRIO E SINCRONIZAR PERFIL
   useEffect(() => {
     checkUser();
   }, []);
+
+  const syncProfile = async (sessionUser: any) => {
+    // Upsert: Cria o perfil se não existir ou atualiza se já existir
+    const { error } = await supabase.from('profiles').upsert(
+      {
+        id: sessionUser.id,
+        full_name: sessionUser.user_metadata?.full_name || 'Jogador',
+        avatar_url: sessionUser.user_metadata?.avatar_url || '',
+        role: 'user',
+        region: 'BR',
+      },
+      { onConflict: 'id' }
+    );
+
+    if (error) {
+      console.error('Erro ao salvar perfil:', error.message);
+    } else {
+      console.log('Perfil criado/atualizado com sucesso no Supabase!');
+    }
+  };
 
   const checkUser = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -41,6 +62,7 @@ export default function Home() {
       router.push('/login');
     } else {
       setUser(session.user);
+      await syncProfile(session.user); // <--- Sincroniza o perfil no Supabase
       setLoadingUser(false);
       fetchMatches();
     }
@@ -506,6 +528,9 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* MENU INFERIOR DE NAVEGAÇÃO */}
+      <BottomNav />
     </main>
   );
 }
