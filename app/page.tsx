@@ -1,9 +1,11 @@
 'use client';
 
-import BottomNav from '../components/BottomNav';
-import { useState, useEffect } from 'react';
+import BottomNav from '@/components/BottomNav';
+import { StoryCard } from '../components/StoryCard';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '../lib/supabase';
+import { supabase } from '@/lib/supabase';
+import { toPng } from 'html-to-image';
 
 interface Match {
   id: string;
@@ -15,9 +17,18 @@ interface Match {
   user_id?: string;
 }
 
+interface Profile {
+  id: string;
+  full_name: string;
+  username?: string;
+  avatar_url?: string;
+  role?: string;
+}
+
 export default function Home() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [loadingUser, setLoadingUser] = useState(true);
 
   const [matches, setMatches] = useState<Match[]>([]);
@@ -26,9 +37,13 @@ export default function Home() {
   const [mvp, setMvp] = useState('');
   const [loading, setLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [generatingCard, setGeneratingCard] = useState(false);
   
   // Estados para edição
   const [editingMatch, setEditingMatch] = useState<Match | null>(null);
+
+  // Referência para o Gerador de Card pro Instagram
+  const cardRef = useRef<HTMLDivElement>(null);
 
   // 1. CHECAR SESSÃO DO USUÁRIO E SINCRONIZAR PERFIL
   useEffect(() => {
@@ -37,7 +52,7 @@ export default function Home() {
 
   const syncProfile = async (sessionUser: any) => {
     // Upsert: Cria o perfil se não existir ou atualiza se já existir
-    const { error } = await supabase.from('profiles').upsert(
+    const { data: prof, error } = await supabase.from('profiles').upsert(
       {
         id: sessionUser.id,
         full_name: sessionUser.user_metadata?.full_name || 'Jogador',
@@ -46,11 +61,12 @@ export default function Home() {
         region: 'BR',
       },
       { onConflict: 'id' }
-    );
+    ).select().single();
 
     if (error) {
       console.error('Erro ao salvar perfil:', error.message);
     } else {
+      if (prof) setProfile(prof);
       console.log('Perfil criado/atualizado com sucesso no Supabase!');
     }
   };
@@ -62,7 +78,7 @@ export default function Home() {
       router.push('/login');
     } else {
       setUser(session.user);
-      await syncProfile(session.user); // <--- Sincroniza o perfil no Supabase
+      await syncProfile(session.user);
       setLoadingUser(false);
       fetchMatches();
     }
@@ -175,6 +191,25 @@ export default function Home() {
     router.push('/login');
   };
 
+  // 7. GERAR IMAGEM PARA STORIES DO INSTAGRAM
+  const handleDownloadCard = async () => {
+    if (!cardRef.current) return;
+    setGeneratingCard(true);
+
+    try {
+      const dataUrl = await toPng(cardRef.current, { cacheBust: true });
+      const link = document.createElement('a');
+      link.download = `wl-tracker-${profile?.username || 'campanha'}.png`;
+      link.href = dataUrl;
+      link.click();
+    } catch (err: any) {
+      alert('Erro ao gerar card: ' + err.message);
+      console.error(err);
+    } finally {
+      setGeneratingCard(false);
+    }
+  };
+
   const openEditModal = (match: Match) => {
     setEditingMatch(match);
     setGoalsFor(match.goals_for.toString());
@@ -195,6 +230,19 @@ export default function Home() {
   const losses = matches.filter((m) => m.result === 'LOSS').length;
   const totalGoalsFor = matches.reduce((acc, m) => acc + m.goals_for, 0);
   const totalGoalsAgainst = matches.reduce((acc, m) => acc + m.goals_against, 0);
+
+  const calculateRank = (w: number) => {
+    if (w >= 19) return 'RANK 1 (19-1)';
+    if (w >= 18) return 'RANK 2 (18-2)';
+    if (w >= 16) return 'RANK 3 (16-4)';
+    if (w >= 14) return 'RANK 4 (14-6)';
+    if (w >= 11) return 'RANK 5 (11-9)';
+    if (w >= 9) return 'RANK 6 (9-11)';
+    if (w >= 6) return 'RANK 7 (6-14)';
+    if (w >= 4) return 'RANK 8 (4-16)';
+    if (w >= 2) return 'RANK 9 (2-18)';
+    return 'EM ANDAMENTO';
+  };
 
   const mvpCounts: { [key: string]: number } = {};
   matches.forEach((m) => {
@@ -217,7 +265,17 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[#070507] text-amber-50 font-sans pb-24 relative overflow-hidden selection:bg-amber-500 selection:text-black">
       
-      {/* 1. BACKGROUND LIMPO (BELLINGHAM + MBAPPÉ SEM PONTOS/BOLINHAS) */}
+      {/* COMPONENTE OCULTO PRO GERADOR DE IMAGEM DO INSTAGRAM */}
+      <StoryCard 
+        ref={cardRef} 
+        wins={wins} 
+        losses={losses} 
+        rank={calculateRank(wins)} 
+        username={profile?.username || user?.user_metadata?.full_name || 'Jogador'} 
+        avatarUrl={user?.user_metadata?.avatar_url}
+      />
+
+      {/* 1. BACKGROUND LIMPO */}
       <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
         <img 
           src="/bg-hero.png" 
@@ -231,22 +289,34 @@ export default function Home() {
 
       <div className="relative max-w-md mx-auto px-4 pt-4 space-y-4 z-10">
         
-        {/* BARRA DE PERFIL DO USUÁRIO + SAIR */}
+        {/* BARRA DE PERFIL DO USUÁRIO + BOTÃO CARD STORIES + SAIR */}
         <div className="flex items-center justify-between bg-gradient-to-r from-[#171310]/90 to-[#0b0907]/90 border border-amber-500/30 rounded-xl px-3 py-1.5 backdrop-blur-md">
           <div className="flex items-center gap-2">
             {user?.user_metadata?.avatar_url && (
               <img src={user.user_metadata.avatar_url} alt="User" className="w-6 h-6 rounded-full border border-amber-400" />
             )}
-            <span className="text-xs font-bold text-amber-100 truncate max-w-[180px]">
+            <span className="text-xs font-bold text-amber-100 truncate max-w-[120px]">
               {user?.user_metadata?.full_name || 'Jogador'}
             </span>
           </div>
-          <button
-            onClick={handleLogout}
-            className="text-[10px] font-black uppercase text-rose-400 hover:text-white bg-rose-950/60 border border-rose-500/40 px-2 py-0.5 rounded transition cursor-pointer"
-          >
-            SAIR 🚪
-          </button>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleDownloadCard}
+              disabled={generatingCard}
+              className="bg-gradient-to-r from-amber-600 via-amber-500 to-amber-400 text-black font-black text-[10px] px-2.5 py-1 rounded-lg shadow-lg active:scale-95 transition cursor-pointer disabled:opacity-50 flex items-center gap-1"
+            >
+              <span>📲</span>
+              <span>{generatingCard ? '...' : 'CARD STORIES'}</span>
+            </button>
+
+            <button
+              onClick={handleLogout}
+              className="text-[10px] font-black uppercase text-rose-400 hover:text-white bg-rose-950/60 border border-rose-500/40 px-2 py-1 rounded transition cursor-pointer"
+            >
+              SAIR 🚪
+            </button>
+          </div>
         </div>
 
         {/* HEADER BRANDING */}
