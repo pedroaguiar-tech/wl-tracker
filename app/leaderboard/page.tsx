@@ -76,7 +76,7 @@ export default function LeaderboardPage() {
 
   const getRoleBadge = (roleStr: string) => {
     const r = roleStr.toUpperCase();
-    if (r.includes('ADMIN')) return <span className="text-[8px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1.5 py-0.5 rounded font-black">👑 ADM</span>;
+    if (r.includes('ADMIN') || r.includes('ADM')) return <span className="text-[8px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1.5 py-0.5 rounded font-black">👑 ADM</span>;
     if (r.includes('PRO')) return <span className="text-[8px] bg-blue-500/20 text-blue-300 border border-blue-500/40 px-1.5 py-0.5 rounded font-black">⚡ PRO</span>;
     if (r.includes('COACH')) return <span className="text-[8px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-1.5 py-0.5 rounded font-black">👨‍🏫 COACH</span>;
     if (r.includes('STREAMER')) return <span className="text-[8px] bg-purple-500/20 text-purple-300 border border-purple-500/40 px-1.5 py-0.5 rounded font-black">🔴 LIVE</span>;
@@ -87,7 +87,6 @@ export default function LeaderboardPage() {
     ? allUsersRanking
     : allUsersRanking.filter(u => u.region?.toUpperCase() === selectedRegion);
 
-  // Limita ao Top 100
   const top100Ranking = filteredRanking.slice(0, 100);
 
   const top1 = top100Ranking[0];
@@ -120,8 +119,8 @@ export default function LeaderboardPage() {
           </p>
         </header>
 
-        {/* FILTRO DE REGIÃO */}
-        <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+        {/* FILTRO DE REGIÃO (COM ROLAGEM HORIZONTAL SUAVE) */}
+        <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none w-full">
           {[
             { id: 'ALL', label: '🌐 GLOBAL' },
             { id: 'BR', label: '🇧🇷 BRASIL' },
@@ -153,7 +152,7 @@ export default function LeaderboardPage() {
               <img 
                 src={top2?.avatar_url || 'https://api.dicebear.com/7.x/bottts/svg?seed=fallback'} 
                 alt="2nd" 
-                className="w-10 h-10 rounded-full border-2 border-zinc-400 object-cover mb-1" 
+                className="w-10 h-10 rounded-full border-2 border-zinc-400 object-cover object-top mb-1" 
               />
               <p className="text-[10px] font-black text-white truncate max-w-full">{top2 ? top2.full_name : '-'}</p>
               <p className="text-[11px] font-black text-zinc-300">{top2 ? `${top2.wins}W - ${top2.losses}L` : '0W'}</p>
@@ -165,7 +164,7 @@ export default function LeaderboardPage() {
               <img 
                 src={top1?.avatar_url || 'https://api.dicebear.com/7.x/bottts/svg?seed=fallback'} 
                 alt="1st" 
-                className="w-12 h-12 rounded-full border-2 border-amber-400 object-cover mb-1 shadow-md" 
+                className="w-12 h-12 rounded-full border-2 border-amber-400 object-cover object-top mb-1 shadow-md" 
               />
               <p className="text-[11px] font-black text-amber-300 truncate max-w-full">{top1 ? top1.full_name : '-'}</p>
               <p className="text-xs font-black text-amber-400">{top1 ? `${top1.wins}W - ${top1.losses}L` : '0W'}</p>
@@ -177,7 +176,7 @@ export default function LeaderboardPage() {
               <img 
                 src={top3?.avatar_url || 'https://api.dicebear.com/7.x/bottts/svg?seed=fallback'} 
                 alt="3rd" 
-                className="w-9 h-9 rounded-full border-2 border-amber-700 object-cover mb-1" 
+                className="w-9 h-9 rounded-full border-2 border-amber-700 object-cover object-top mb-1" 
               />
               <p className="text-[10px] font-black text-white truncate max-w-full">{top3 ? top3.full_name : '-'}</p>
               <p className="text-[11px] font-black text-amber-600">{top3 ? `${top3.wins}W - ${top3.losses}L` : '0W'}</p>
@@ -211,7 +210,7 @@ export default function LeaderboardPage() {
                       <img 
                         src={item.avatar_url || 'https://api.dicebear.com/7.x/bottts/svg?seed=fallback'} 
                         alt="User"
-                        className="w-8 h-8 rounded-full border border-amber-500/30 object-cover flex-shrink-0"
+                        className="w-8 h-8 rounded-full border border-amber-500/30 object-cover object-center flex-shrink-0"
                       />
                       <div className="overflow-hidden">
                         <div className="flex items-center gap-1.5">
