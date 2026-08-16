@@ -250,7 +250,6 @@ export default function Home() {
 
     try {
       if (editingMatch) {
-        // 1. Limpa estatísticas antigas da partida
         const { error: deleteError } = await supabase
           .from('match_stats')
           .delete()
@@ -258,7 +257,6 @@ export default function Home() {
         
         if (deleteError) throw new Error("Erro ao limpar stats antigas: " + deleteError.message);
 
-        // 2. Atualiza a partida principal
         const { error: matchError } = await supabase
           .from('matches')
           .update({
@@ -272,10 +270,8 @@ export default function Home() {
         
         if (matchError) throw new Error("Erro ao atualizar match: " + matchError.message);
 
-        // 3. Salva os novos marcadores e assistentes
         await saveMatchStats(editingMatch.id);
       } else {
-        // Cria nova partida
         const nextMatchNumber = matches.length + 1;
         const { data: createdMatch, error: insertError } = await supabase.from('matches').insert([
           {
@@ -294,7 +290,6 @@ export default function Home() {
       }
 
       closeModal();
-      // Aguarda o banco concluir a indexação das novas linhas
       await new Promise(resolve => setTimeout(resolve, 500));
       await fetchMatches(user?.id);
       
@@ -452,7 +447,6 @@ export default function Home() {
     return 'EM ANDAMENTO';
   };
 
-  // Contagem e Ranking Geral de MVPs
   const mvpCounts: { [key: string]: number } = {};
   matches.forEach((m) => {
     if (m.mvp_player) {
@@ -520,7 +514,6 @@ export default function Home() {
           </div>
 
           <div className="flex items-center gap-1.5">
-            {/* ATALHO EXCLUSIVO PARA ADMINISTRADORES */}
             {isAdmin && (
               <button
                 onClick={() => router.push('/admin')}
@@ -616,6 +609,48 @@ export default function Home() {
           </p>
         </header>
 
+        {/* CARD DO COACH DESTAQUE REPOSICIONADO PARA O TOPO */}
+        <a
+          href="https://www.instagram.com/nomercy54_?igsh=MXRpMTl0eGs1enVyag=="
+          target="_blank"
+          rel="noreferrer"
+          className="block bg-gradient-to-r from-amber-950/90 via-[#221912]/95 to-[#0d0906]/95 border-2 border-amber-500/60 hover:border-amber-400 p-3.5 rounded-2xl shadow-[0_0_20px_rgba(217,119,6,0.25)] backdrop-blur-md transition-all active:scale-[0.98] group cursor-pointer"
+        >
+          <div className="flex items-center gap-3">
+            <div className="relative w-12 h-12 rounded-full bg-gradient-to-br from-amber-400 via-amber-600 to-amber-900 p-[2px] flex-shrink-0 shadow-md">
+              <div className="w-full h-full bg-[#0a0807] rounded-full flex items-center justify-center text-xl overflow-hidden">
+                🎮
+              </div>
+              <span className="absolute -bottom-0.5 -right-0.5 bg-emerald-500 text-black text-[8px] font-black px-1 rounded-full border border-black uppercase">
+                PRO
+              </span>
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[9px] font-black text-amber-400 uppercase tracking-widest bg-amber-500/20 px-1.5 py-0.5 rounded border border-amber-500/40">
+                  COACH MENTOR
+                </span>
+                <span className="text-[9px] font-extrabold text-amber-300/80 uppercase">
+                  • INSTAGRAM
+                </span>
+              </div>
+              
+              <h3 className="text-sm font-black text-white group-hover:text-amber-300 transition-colors truncate mt-0.5">
+                NoMercy54
+              </h3>
+              
+              <p className="text-[11px] text-zinc-300 leading-tight font-medium line-clamp-1 mt-0.5">
+                Quer elevar seu nível de jogo? Clique aqui e conheça meu trabalho no Instagram.
+              </p>
+            </div>
+
+            <div className="text-amber-400 group-hover:translate-x-1 transition-transform text-lg pr-1 font-bold">
+              ➔
+            </div>
+          </div>
+        </a>
+
         {/* CARD PRINCIPAL DE RECORD */}
         <div className="relative overflow-hidden rounded-2xl border-2 border-amber-400 p-5 shadow-[0_0_30px_rgba(251,191,36,0.4)] backdrop-blur-md">
           <div className="absolute inset-0 z-0 overflow-hidden">
@@ -707,7 +742,6 @@ export default function Home() {
           </div>
 
           <div className="grid grid-cols-1 gap-3">
-            {/* LINHA DE ARTILHARIA E GARÇONS */}
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-[#0a0807]/80 border border-amber-500/20 rounded-xl p-3">
                 <span className="text-[10px] font-black text-emerald-400 uppercase tracking-wider block border-b border-amber-500/20 pb-1 mb-2">
@@ -746,7 +780,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* RANKING COMPLETO DE MVPS DA WL */}
             <div className="bg-[#0a0807]/80 border border-amber-500/20 rounded-xl p-3">
               <span className="text-[10px] font-black text-purple-400 uppercase tracking-wider block border-b border-amber-500/20 pb-1 mb-2">
                 ⭐ RANKING DE MVPS (HOMEM DO JOGO)
@@ -766,23 +799,6 @@ export default function Home() {
             </div>
           </div>
         </section>
-
-        {/* DICA DO COACH */}
-        <div className="bg-gradient-to-r from-[#221912]/95 to-[#0d0906]/95 border border-amber-500/40 p-3 rounded-xl flex items-center gap-3 shadow-lg backdrop-blur-md">
-          <div className="w-11 h-11 rounded-full bg-gradient-to-br from-amber-400 to-amber-800 p-[1.5px] flex-shrink-0">
-            <div className="w-full h-full bg-[#0a0807] rounded-full flex items-center justify-center text-lg">
-              👨‍🏫
-            </div>
-          </div>
-          <div className="space-y-0.5">
-            <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest block">
-              COACH TIPS
-            </span>
-            <p className="text-[11px] text-zinc-300 leading-tight font-medium">
-              Mandando bem! Fortaleça o meio campo no 2º tempo e use ataques rápidos pelas pontas.
-            </p>
-          </div>
-        </div>
 
         {/* BOTÃO ADICIONAR PARTIDA */}
         <button
@@ -1013,7 +1029,6 @@ export default function Home() {
                 />
               </div>
 
-              {/* SEÇÃO DINÂMICA DE GOLEADORES */}
               <div className="border-t border-amber-500/20 pt-2 space-y-2">
                 <label className="block text-[10px] font-black text-amber-400 uppercase tracking-wider">
                   ⚽ Marcadores de Gol
@@ -1043,7 +1058,6 @@ export default function Home() {
                 ))}
               </div>
 
-              {/* SEÇÃO DINÂMICA DE ASSISTENTES */}
               <div className="border-t border-amber-500/20 pt-2 space-y-2">
                 <label className="block text-[10px] font-black text-amber-400 uppercase tracking-wider">
                   🎯 Assistências (Garçons)
