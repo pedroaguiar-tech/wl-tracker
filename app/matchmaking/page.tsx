@@ -28,15 +28,17 @@ interface MatchRequest {
 
 interface MatchMessage {
   id: string;
+  match_id: string;
   sender_id: string;
   content: string;
   created_at: string;
-  profiles?: { full_name: string } | null;
+  profiles?: { full_name: string; role?: string } | null;
 }
 
 export default function MatchmakingPage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
+  const [userProfile, setUserProfile] = useState<Profile | null>(null);
   const [matches, setMatches] = useState<MatchRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -64,6 +66,16 @@ export default function MatchmakingPage() {
       return;
     }
     setUser(session.user);
+
+    // Carrega o perfil do usuário atual
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', session.user.id)
+      .single();
+
+    if (profile) setUserProfile(profile);
+
     await fetchMatches(session.user.id);
     setLoading(false);
   };
@@ -84,6 +96,53 @@ export default function MatchmakingPage() {
       if (active) setMyActiveMatch(active as any);
       else setMyActiveMatch(null);
     }
+  };
+
+  // --- FUNÇÕES DE MODERAÇÃO & DENÚNCIA ---
+  const handleReportContent = async (targetType: 'MATCH' | 'CHAT_MESSAGE', targetId: string) => {
+    const reason = prompt('Qual o motivo da denúncia? (ex: Ofensa, Spam, Nome inadequado)');
+    if (!reason || !reason.trim()) return;
+
+    const { error } = await supabase.from('reports').insert({
+      reporter_id: user.id,
+      target_type: targetType,
+      target_id: targetId,
+      reason: reason.trim(),
+    });
+
+    if (!error) {
+      alert('Denúncia enviada aos administradores. Obrigado!');
+    } else {
+      alert('Erro ao enviar denúncia: ' + error.message);
+    }
+  };
+
+  const handleBanUser = async (targetUserId: string, targetName: string) => {
+    if (!confirm(`Tem certeza que deseja BANIR o usuário "${targetName}"?`)) return;
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ role: 'BANNED' })
+      .eq('id', targetUserId);
+
+    if (!error) {
+      alert('Usuário banido com sucesso!');
+      if (user) fetchMatches(user.id);
+    } else {
+      alert('Erro ao banir usuário: ' + error.message);
+    }
+  };
+
+  const handleDeleteMatchRoom = async (matchId: string) => {
+    if (!confirm('Deseja apagar esta sala de X1?')) return;
+    await supabase.from('matchmaking').delete().eq('id', matchId);
+    if (user) fetchMatches(user.id);
+  };
+
+  const handleDeleteChatMessage = async (msgId: string) => {
+    if (!confirm('Deseja apagar esta mensagem do chat?')) return;
+    await supabase.from('match_messages').delete().eq('id', msgId);
+    if (activeMatchChat) fetchMatchMessages(activeMatchChat.id);
   };
 
   const handleCreateMatch = async (e: React.FormEvent) => {
@@ -126,7 +185,7 @@ export default function MatchmakingPage() {
       .from('match_messages')
       .select(`
         *,
-        profiles ( full_name )
+        profiles ( full_name, role )
       `)
       .eq('match_id', matchId)
       .order('created_at', { ascending: true });
@@ -158,6 +217,8 @@ export default function MatchmakingPage() {
         return <span className="bg-amber-600/30 text-amber-400 border border-amber-500/40 text-[9px] font-black px-2 py-0.5 rounded">💻 PC</span>;
     }
   };
+
+  const isAdmin = userProfile?.role?.toUpperCase().includes('ADMIN') || userProfile?.role?.toUpperCase().includes('ADM');
 
   if (loading) {
     return (
@@ -210,6 +271,7 @@ export default function MatchmakingPage() {
           ) : (
             matches.map((m) => {
               const isMe = m.user_id === user?.id;
+
               return (
                 <div 
                   key={m.id} 
@@ -238,7 +300,41 @@ export default function MatchmakingPage() {
                     </div>
 
                     <div className="flex flex-col items-end gap-1">
-                      {getPlatformBadge(m.platform)}
+                      <div className="flex items-center gap-1.5">
+                        {getPlatformBadge(m.platform)}
+
+                        {/* MODERAÇÃO DA SALA */}
+                        {!isMe && (
+                          <button 
+                            onClick={() => handleReportContent('MATCH', m.id)}
+                            title="Reportar Sala"
+                            className="text-zinc-400 hover:text-amber-400 text-xs bg-zinc-800/60 p-1 rounded border border-zinc-700 cursor-pointer"
+                          >
+                            🚩
+                          </button>
+                        )}
+
+                        {(isMe || isAdmin) && (
+                          <button 
+                            onClick={() => handleDeleteMatchRoom(m.id)}
+                            title="Apagar Sala"
+                            className="text-rose-500 text-xs bg-rose-500/10 p-1 rounded border border-rose-500/30 cursor-pointer"
+                          >
+                            🗑️
+                          </button>
+                        )}
+
+                        {isAdmin && !isMe && (
+                          <button 
+                            onClick={() => handleBanUser(m.user_id, m.profiles?.full_name || 'Usuário')}
+                            title="Banir Criador"
+                            className="text-[8px] bg-rose-600/30 text-rose-300 border border-rose-500 px-1.5 py-0.5 rounded font-black hover:bg-rose-600 cursor-pointer"
+                          >
+                            🚫 BAN
+                          </button>
+                        )}
+                      </div>
+
                       <span className="text-[9px] font-black text-emerald-400 flex items-center gap-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
                         {m.mode}
@@ -301,13 +397,47 @@ export default function MatchmakingPage() {
                 </p>
               ) : (
                 matchMessages.map((msg) => {
-                  const isMe = msg.sender_id === user.id;
+                  const isMsgOwner = msg.sender_id === user?.id;
+
                   return (
-                    <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                      <span className="text-[8px] text-zinc-500 font-bold mb-0.5">
-                        {msg.profiles?.full_name || 'Jogador'}
-                      </span>
-                      <div className={`max-w-[80%] p-2 rounded-xl text-xs ${isMe ? 'bg-amber-500 text-black font-semibold' : 'bg-zinc-800 text-white border border-zinc-700'}`}>
+                    <div key={msg.id} className={`flex flex-col ${isMsgOwner ? 'items-end' : 'items-start'}`}>
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className="text-[8px] text-zinc-500 font-bold">
+                          {msg.profiles?.full_name || 'Jogador'}
+                        </span>
+
+                        {/* Moderação na mensagem */}
+                        {!isMsgOwner && (
+                          <button 
+                            onClick={() => handleReportContent('CHAT_MESSAGE', msg.id)}
+                            className="text-[9px] text-zinc-500 hover:text-amber-400"
+                            title="Reportar Mensagem"
+                          >
+                            🚩
+                          </button>
+                        )}
+
+                        {(isMsgOwner || isAdmin) && (
+                          <button 
+                            onClick={() => handleDeleteChatMessage(msg.id)}
+                            className="text-[9px] text-rose-400 hover:underline"
+                            title="Apagar Mensagem"
+                          >
+                            🗑️
+                          </button>
+                        )}
+
+                        {isAdmin && !isMsgOwner && (
+                          <button 
+                            onClick={() => handleBanUser(msg.sender_id, msg.profiles?.full_name || 'Usuário')}
+                            className="text-[8px] bg-rose-500/20 text-rose-300 border border-rose-500/40 px-1 rounded font-black hover:bg-rose-500/40"
+                          >
+                            🚫 BAN
+                          </button>
+                        )}
+                      </div>
+
+                      <div className={`max-w-[80%] p-2 rounded-xl text-xs ${isMsgOwner ? 'bg-amber-500 text-black font-semibold' : 'bg-zinc-800 text-white border border-zinc-700'}`}>
                         {msg.content}
                       </div>
                     </div>
