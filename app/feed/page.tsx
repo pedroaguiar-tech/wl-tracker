@@ -17,6 +17,7 @@ interface LiveStream {
 
 interface Comment {
   id: string;
+  user_id: string;
   content: string;
   profiles: { full_name: string } | null;
   created_at: string;
@@ -87,7 +88,6 @@ export default function Feed() {
     }
     setUser(session.user);
 
-    // Carrega perfil do usuário logado
     const { data: profile } = await supabase
       .from('profiles')
       .select('*')
@@ -112,7 +112,6 @@ export default function Feed() {
 
     if (!error && data) {
       setLives(data as any);
-      // Verifica se o usuário atual tem uma live ativa
       const myLive = data.find((l: any) => l.user_id === user?.id);
       if (myLive) setMyCurrentLive(myLive as any);
     }
@@ -127,7 +126,7 @@ export default function Feed() {
           id, full_name, avatar_url, region, role, username, bio, whatsapp, instagram
         ),
         comments (
-          id, content, created_at,
+          id, user_id, content, created_at,
           profiles ( full_name )
         )
       `)
@@ -146,17 +145,56 @@ export default function Feed() {
     if (data) setPosts(data as any);
   };
 
+  // --- FUNÇÕES DE MODERAÇÃO & REPORT ---
+  const handleReportContent = async (targetType: 'POST' | 'COMMENT', targetId: string) => {
+    const reason = prompt('Qual o motivo da denúncia? (ex: Ofensa, Conteúdo inadequado, Spam)');
+    if (!reason || !reason.trim()) return;
+
+    const { error } = await supabase.from('reports').insert({
+      reporter_id: user.id,
+      target_type: targetType,
+      target_id: targetId,
+      reason: reason.trim(),
+    });
+
+    if (!error) {
+      alert('Denúncia enviada aos administradores. Obrigado!');
+    } else {
+      alert('Erro ao enviar denúncia: ' + error.message);
+    }
+  };
+
+  const handleBanUser = async (targetUserId: string, targetName: string) => {
+    if (!confirm(`Tem certeza que deseja BANIR o usuário "${targetName}"?`)) return;
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ role: 'BANNED' })
+      .eq('id', targetUserId);
+
+    if (!error) {
+      alert('Usuário banido com sucesso!');
+      fetchPosts();
+    } else {
+      alert('Erro ao banir usuário: ' + error.message);
+    }
+  };
+
+  const handleDeleteComment = async (commentId: string) => {
+    if (!confirm('Deseja excluir este comentário?')) return;
+    const { error } = await supabase.from('comments').delete().eq('id', commentId);
+    if (!error) fetchPosts();
+  };
+
   const handleToggleLive = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
 
     if (myCurrentLive) {
-      // Encerrar Live
       await supabase.from('lives').delete().eq('id', myCurrentLive.id);
       setMyCurrentLive(null);
       alert('Live encerrada com sucesso! 🛑');
     } else {
-      // Iniciar Live
       if (!liveTitle || !liveUrl) return alert('Preencha o título e a URL da sua live!');
       
       const { data, error } = await supabase.from('lives').upsert({
@@ -181,6 +219,13 @@ export default function Feed() {
 
   const renderRoleBadge = (role?: string) => {
     switch (role?.toUpperCase()) {
+      case 'ADMIN':
+      case 'ADM':
+        return (
+          <span className="text-[9px] font-black bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/40 uppercase tracking-wider flex items-center gap-1">
+            👑 ADM
+          </span>
+        );
       case 'COACH':
         return (
           <span className="text-[9px] font-black bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/40 uppercase tracking-wider flex items-center gap-1">
@@ -339,7 +384,8 @@ export default function Feed() {
     }
   };
 
-  const isStreamerOrAdmin = ['STREAMER', 'ADMIN', 'COACH'].includes(userProfile?.role?.toUpperCase() || '');
+  const isAdmin = userProfile?.role?.toUpperCase().includes('ADMIN') || userProfile?.role?.toUpperCase().includes('ADM');
+  const isStreamerOrAdmin = ['STREAMER', 'ADMIN', 'ADM', 'COACH'].includes(userProfile?.role?.toUpperCase() || '');
 
   if (loading) {
     return (
@@ -434,86 +480,169 @@ export default function Feed() {
               Nenhum time postado ainda. Seja o primeiro a publicar! 🚀
             </div>
           ) : (
-            posts.map((post) => (
-              <div key={post.id} className="bg-[#120f0d]/90 border border-amber-500/30 rounded-2xl overflow-hidden shadow-xl backdrop-blur-md">
-                
-                {/* TOPO DO POST */}
-                <div className="p-3 flex items-center justify-between border-b border-amber-500/10">
-                  <div 
-                    onClick={() => post.profiles && setSelectedProfile(post.profiles)} 
-                    className="flex items-center gap-2.5 cursor-pointer hover:opacity-80 transition"
-                  >
-                    <img 
-                      src={post.profiles?.avatar_url || 'https://api.dicebear.com/7.x/bottts/svg?seed=fallback'} 
-                      alt="Avatar"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = 'https://api.dicebear.com/7.x/bottts/svg?seed=fallback';
-                      }}
-                      className="w-8 h-8 rounded-full border border-amber-400 object-cover bg-zinc-800" 
-                    />
-                    <div>
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-xs font-black text-white">{post.profiles?.full_name || 'Jogador'}</span>
-                        {renderRoleBadge(post.profiles?.role)}
-                        <span className="text-[9px] font-black bg-zinc-800 text-zinc-400 px-1.5 py-0.2 rounded border border-zinc-700">
-                          {post.profiles?.region || 'BR'}
+            posts.map((post) => {
+              const isOwner = post.user_id === user?.id;
+
+              return (
+                <div key={post.id} className="bg-[#120f0d]/90 border border-amber-500/30 rounded-2xl overflow-hidden shadow-xl backdrop-blur-md">
+                  
+                  {/* TOPO DO POST */}
+                  <div className="p-3 flex items-center justify-between border-b border-amber-500/10">
+                    <div 
+                      onClick={() => post.profiles && setSelectedProfile(post.profiles)} 
+                      className="flex items-center gap-2.5 cursor-pointer hover:opacity-80 transition"
+                    >
+                      <img 
+                        src={post.profiles?.avatar_url || 'https://api.dicebear.com/7.x/bottts/svg?seed=fallback'} 
+                        alt="Avatar"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = 'https://api.dicebear.com/7.x/bottts/svg?seed=fallback';
+                        }}
+                        className="w-8 h-8 rounded-full border border-amber-400 object-cover bg-zinc-800" 
+                      />
+                      <div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-xs font-black text-white">{post.profiles?.full_name || 'Jogador'}</span>
+                          {renderRoleBadge(post.profiles?.role)}
+                          <span className="text-[9px] font-black bg-zinc-800 text-zinc-400 px-1.5 py-0.2 rounded border border-zinc-700">
+                            {post.profiles?.region || 'BR'}
+                          </span>
+                        </div>
+                        <span className="text-[9px] text-amber-500 font-bold">
+                          {post.profiles?.username ? `@${post.profiles.username}` : new Date(post.created_at).toLocaleDateString('pt-BR')}
                         </span>
                       </div>
-                      <span className="text-[9px] text-amber-500 font-bold">
-                        {post.profiles?.username ? `@${post.profiles.username}` : new Date(post.created_at).toLocaleDateString('pt-BR')}
-                      </span>
                     </div>
-                  </div>
 
-                  {post.user_id === user?.id && (
+                    {/* BOTÕES DE AÇÃO / MODERAÇÃO DO POST */}
                     <div className="flex items-center gap-2">
-                      <button onClick={() => { setEditingPost(post); setCaption(post.caption || ''); setShowPostModal(true); }} className="text-amber-400 text-xs bg-amber-500/10 p-1.5 rounded border border-amber-500/30 cursor-pointer">✏️</button>
-                      <button onClick={() => handleDelete(post.id)} className="text-rose-500 text-xs bg-rose-500/10 p-1.5 rounded border border-rose-500/30 cursor-pointer">🗑️</button>
+                      {/* Reportar (Usuário normal e não-dono) */}
+                      {!isOwner && (
+                        <button 
+                          onClick={() => handleReportContent('POST', post.id)} 
+                          title="Reportar Publicação"
+                          className="text-zinc-400 hover:text-amber-400 text-xs bg-zinc-800/60 p-1.5 rounded border border-zinc-700 cursor-pointer"
+                        >
+                          🚩
+                        </button>
+                      )}
+
+                      {/* Editar (Dono do Post) */}
+                      {isOwner && (
+                        <button 
+                          onClick={() => { setEditingPost(post); setCaption(post.caption || ''); setShowPostModal(true); }} 
+                          className="text-amber-400 text-xs bg-amber-500/10 p-1.5 rounded border border-amber-500/30 cursor-pointer"
+                        >
+                          ✏️
+                        </button>
+                      )}
+
+                      {/* Excluir (Dono do Post OU ADM) */}
+                      {(isOwner || isAdmin) && (
+                        <button 
+                          onClick={() => handleDelete(post.id)} 
+                          title="Excluir Post"
+                          className="text-rose-500 text-xs bg-rose-500/10 p-1.5 rounded border border-rose-500/30 cursor-pointer"
+                        >
+                          🗑️
+                        </button>
+                      )}
+
+                      {/* Banir Usuário (Exclusivo ADM, exceto a si próprio) */}
+                      {isAdmin && !isOwner && (
+                        <button 
+                          onClick={() => handleBanUser(post.user_id, post.profiles?.full_name || 'Usuário')}
+                          title="Banir Usuário"
+                          className="text-[9px] bg-rose-600/30 text-rose-300 border border-rose-500 px-2 py-1 rounded font-black hover:bg-rose-600 cursor-pointer"
+                        >
+                          🚫 BAN
+                        </button>
+                      )}
                     </div>
-                  )}
-                </div>
-
-                {/* FOTO DO TIME */}
-                <div className="w-full bg-black flex items-center justify-center overflow-hidden max-h-96">
-                  <img src={post.image_url} alt="Time" className="w-full h-auto object-cover" />
-                </div>
-
-                {/* AÇÕES E CONTEÚDO DO POST */}
-                <div className="p-3 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => handleLike(post.id, post.likes_count)} className="flex items-center gap-1.5 text-xs font-bold text-rose-400 bg-rose-950/40 border border-rose-500/30 px-3 py-1 rounded-full cursor-pointer hover:bg-rose-900/50 transition">
-                      <span>❤️</span> {post.likes_count}
-                    </button>
                   </div>
 
-                  {post.caption && (
-                    <p className="text-xs text-zinc-200 font-medium px-1 pt-1">{post.caption}</p>
-                  )}
+                  {/* FOTO DO TIME */}
+                  <div className="w-full bg-black flex items-center justify-center overflow-hidden max-h-96">
+                    <img src={post.image_url} alt="Time" className="w-full h-auto object-cover" />
+                  </div>
 
-                  {/* COMENTÁRIOS */}
-                  <div className="border-t border-amber-500/15 pt-3 space-y-2">
-                    {post.comments?.map((c) => (
-                      <div key={c.id} className="text-[11px] bg-[#0a0807]/80 p-2 rounded-lg border border-amber-500/10">
-                        <span className="font-black text-amber-400 mr-1.5">{c.profiles?.full_name || 'Usuário'}:</span>
-                        <span className="text-zinc-300 font-medium">{c.content}</span>
+                  {/* AÇÕES E CONTEÚDO DO POST */}
+                  <div className="p-3 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => handleLike(post.id, post.likes_count)} className="flex items-center gap-1.5 text-xs font-bold text-rose-400 bg-rose-950/40 border border-rose-500/30 px-3 py-1 rounded-full cursor-pointer hover:bg-rose-900/50 transition">
+                        <span>❤️</span> {post.likes_count}
+                      </button>
+                    </div>
+
+                    {post.caption && (
+                      <p className="text-xs text-zinc-200 font-medium px-1 pt-1">{post.caption}</p>
+                    )}
+
+                    {/* COMENTÁRIOS COM MODERAÇÃO */}
+                    <div className="border-t border-amber-500/15 pt-3 space-y-2">
+                      {post.comments?.map((c) => {
+                        const isCommentOwner = c.user_id === user?.id;
+
+                        return (
+                          <div key={c.id} className="text-[11px] bg-[#0a0807]/80 p-2 rounded-lg border border-amber-500/10 flex items-center justify-between">
+                            <div>
+                              <span className="font-black text-amber-400 mr-1.5">{c.profiles?.full_name || 'Usuário'}:</span>
+                              <span className="text-zinc-300 font-medium">{c.content}</span>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+                              {/* Reportar Comentário */}
+                              {!isCommentOwner && (
+                                <button 
+                                  onClick={() => handleReportContent('COMMENT', c.id)} 
+                                  className="text-[10px] text-zinc-500 hover:text-amber-400"
+                                  title="Reportar"
+                                >
+                                  🚩
+                                </button>
+                              )}
+
+                              {/* Apagar Comentário (Dono do comentário OU ADM) */}
+                              {(isCommentOwner || isAdmin) && (
+                                <button 
+                                  onClick={() => handleDeleteComment(c.id)} 
+                                  className="text-[10px] text-rose-400 hover:underline"
+                                  title="Apagar Comentário"
+                                >
+                                  🗑️
+                                </button>
+                              )}
+
+                              {/* Banir autor do comentário (Exclusivo ADM) */}
+                              {isAdmin && !isCommentOwner && (
+                                <button 
+                                  onClick={() => handleBanUser(c.user_id, c.profiles?.full_name || 'Usuário')}
+                                  className="text-[8px] bg-rose-500/20 text-rose-300 border border-rose-500/40 px-1 py-0.5 rounded font-black hover:bg-rose-500/40"
+                                >
+                                  🚫 BAN
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      <div className="flex gap-2 pt-1">
+                        <input
+                          type="text"
+                          placeholder="Escreva um comentário..."
+                          value={commentInputs[post.id] || ''}
+                          onChange={(e) => setCommentInputs({ ...commentInputs, [post.id]: e.target.value })}
+                          className="flex-1 bg-[#0a0807] border border-amber-500/30 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400 font-medium"
+                        />
+                        <button onClick={() => handleAddComment(post.id)} className="bg-amber-500 text-black font-black text-xs px-3 py-1.5 rounded-lg cursor-pointer hover:bg-amber-400 transition">OK</button>
                       </div>
-                    ))}
-
-                    <div className="flex gap-2 pt-1">
-                      <input
-                        type="text"
-                        placeholder="Escreva um comentário..."
-                        value={commentInputs[post.id] || ''}
-                        onChange={(e) => setCommentInputs({ ...commentInputs, [post.id]: e.target.value })}
-                        className="flex-1 bg-[#0a0807] border border-amber-500/30 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400 font-medium"
-                      />
-                      <button onClick={() => handleAddComment(post.id)} className="bg-amber-500 text-black font-black text-xs px-3 py-1.5 rounded-lg cursor-pointer hover:bg-amber-400 transition">OK</button>
                     </div>
                   </div>
-                </div>
 
-              </div>
-            ))
+                </div>
+              );
+            })
           )}
         </div>
       </div>
