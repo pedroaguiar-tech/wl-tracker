@@ -21,6 +21,17 @@ export default function BottomNav() {
           <span className="text-[10px] uppercase tracking-wider">Minha WL</span>
         </Link>
 
+        {/* ABA RANKING / LEADERBOARD */}
+        <Link
+          href="/leaderboard"
+          className={`flex flex-col items-center gap-1 transition ${
+            pathname === '/leaderboard' ? 'text-amber-400 font-black scale-105' : 'text-zinc-500 hover:text-zinc-300'
+          }`}
+        >
+          <span className="text-xl">🏆</span>
+          <span className="text-[10px] uppercase tracking-wider">Ranking</span>
+        </Link>
+
         {/* ABA FEED SOCIAL */}
         <Link
           href="/feed"
