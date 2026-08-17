@@ -129,13 +129,12 @@ export default function ProfilePage() {
     setSendingRequest(false);
 
     if (error) {
-      alert('Solicitação enviada aos Administradores com sucesso! 📩');
+      alert('Erro ao enviar solicitação: ' + error.message);
     } else {
       alert('Solicitação enviada aos Administradores com sucesso! 📩');
+      setRequestReason('');
+      setShowRoleModal(false);
     }
-
-    setRequestReason('');
-    setShowRoleModal(false);
   };
 
   const renderRoleBadgeTitle = (userRole: string) => {

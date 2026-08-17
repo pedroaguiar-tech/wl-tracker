@@ -202,11 +202,33 @@ export default function Home() {
     setNewScorerQty('1');
   };
 
+  const handleEditScorer = (index: number) => {
+    const item = scorers[index];
+    setNewScorerName(item.player_name);
+    setNewScorerQty(item.quantity.toString());
+    setScorers(scorers.filter((_, i) => i !== index));
+  };
+
+  const handleRemoveScorer = (index: number) => {
+    setScorers(scorers.filter((_, i) => i !== index));
+  };
+
   const handleAddAssister = () => {
     if (!newAssisterName) return;
     setAssisters([...assisters, { player_name: newAssisterName, quantity: parseInt(newAssisterQty) || 1 }]);
     setNewAssisterName('');
     setNewAssisterQty('1');
+  };
+
+  const handleEditAssister = (index: number) => {
+    const item = assisters[index];
+    setNewAssisterName(item.player_name);
+    setNewAssisterQty(item.quantity.toString());
+    setAssisters(assisters.filter((_, i) => i !== index));
+  };
+
+  const handleRemoveAssister = (index: number) => {
+    setAssisters(assisters.filter((_, i) => i !== index));
   };
 
   const handleToggleLive = async (e: React.FormEvent) => {
@@ -425,6 +447,10 @@ export default function Home() {
     setMvp('');
     setScorers([]);
     setAssisters([]);
+    setNewScorerName('');
+    setNewScorerQty('1');
+    setNewAssisterName('');
+    setNewAssisterQty('1');
   };
 
   const wins = matches.filter((m) => m.result === 'WIN').length;
@@ -1053,9 +1079,27 @@ export default function Home() {
                   <button type="button" onClick={handleAddScorer} className="bg-emerald-600 text-white font-bold px-3 rounded-lg text-xs">+</button>
                 </div>
                 {scorers.map((s, i) => (
-                  <div key={i} className="flex justify-between text-xs bg-zinc-900 p-1.5 rounded border border-zinc-800">
+                  <div key={i} className="flex justify-between items-center text-xs bg-zinc-900 p-1.5 rounded border border-zinc-800">
                     <span className="text-zinc-200">{s.player_name}</span>
-                    <span className="font-bold text-emerald-400">{s.quantity} G</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-emerald-400">{s.quantity} G</span>
+                      <button 
+                        type="button" 
+                        onClick={() => handleEditScorer(i)} 
+                        className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/30 hover:bg-amber-500/40 transition cursor-pointer"
+                        title="Editar"
+                      >
+                        ✏️
+                      </button>
+                      <button 
+                        type="button" 
+                        onClick={() => handleRemoveScorer(i)} 
+                        className="text-[10px] bg-rose-500/20 text-rose-400 px-1.5 py-0.5 rounded border border-rose-500/30 hover:bg-rose-500/40 transition cursor-pointer"
+                        title="Remover"
+                      >
+                        🗑️
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1082,9 +1126,27 @@ export default function Home() {
                   <button type="button" onClick={handleAddAssister} className="bg-amber-600 text-white font-bold px-3 rounded-lg text-xs">+</button>
                 </div>
                 {assisters.map((a, i) => (
-                  <div key={i} className="flex justify-between text-xs bg-zinc-900 p-1.5 rounded border border-zinc-800">
+                  <div key={i} className="flex justify-between items-center text-xs bg-zinc-900 p-1.5 rounded border border-zinc-800">
                     <span className="text-zinc-200">{a.player_name}</span>
-                    <span className="font-bold text-amber-300">{a.quantity} A</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-amber-300">{a.quantity} A</span>
+                      <button 
+                        type="button" 
+                        onClick={() => handleEditAssister(i)} 
+                        className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/30 hover:bg-amber-500/40 transition cursor-pointer"
+                        title="Editar"
+                      >
+                        ✏️
+                      </button>
+                      <button 
+                        type="button" 
+                        onClick={() => handleRemoveAssister(i)} 
+                        className="text-[10px] bg-rose-500/20 text-rose-400 px-1.5 py-0.5 rounded border border-rose-500/30 hover:bg-rose-500/40 transition cursor-pointer"
+                        title="Remover"
+                      >
+                        🗑️
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>

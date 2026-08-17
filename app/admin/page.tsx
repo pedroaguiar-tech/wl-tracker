@@ -12,6 +12,7 @@ interface UserProfile {
   avatar_url?: string;
   role?: string;
   region?: string;
+  banned_until?: string | null;
 }
 
 interface RoleRequest {
@@ -36,6 +37,17 @@ interface MatchProof {
   profiles?: UserProfile | null;
 }
 
+interface ReportItem {
+  id: string;
+  reporter_id: string;
+  target_type: 'POST' | 'COMMENT';
+  target_id: string;
+  reason: string;
+  status: string;
+  created_at: string;
+  profiles?: UserProfile | null;
+}
+
 export default function AdminPanel() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -43,6 +55,7 @@ export default function AdminPanel() {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [requests, setRequests] = useState<RoleRequest[]>([]);
   const [pendingProofs, setPendingProofs] = useState<MatchProof[]>([]);
+  const [reports, setReports] = useState<ReportItem[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
@@ -66,7 +79,7 @@ export default function AdminPanel() {
 
     const roleUpper = prof?.role?.toUpperCase() || '';
 
-    if (!roleUpper.includes('ADMIN')) {
+    if (!roleUpper.includes('ADMIN') && !roleUpper.includes('ADM')) {
       alert('⚠️ Acesso restrito a Administradores!');
       router.push('/');
       return;
@@ -75,6 +88,7 @@ export default function AdminPanel() {
     await fetchAllUsers();
     await fetchRequests();
     await fetchPendingProofs();
+    await fetchReports();
     setLoading(false);
   };
 
@@ -114,6 +128,19 @@ export default function AdminPanel() {
     if (!error && data) setPendingProofs(data as any);
   };
 
+  const fetchReports = async () => {
+    const { data, error } = await supabase
+      .from('reports')
+      .select(`
+        *,
+        profiles:reporter_id ( id, full_name, username )
+      `)
+      .eq('status', 'PENDING')
+      .order('created_at', { ascending: false });
+
+    if (!error && data) setReports(data as any);
+  };
+
   const handleApproveWLProof = async (matchId: string) => {
     setUpdatingId(matchId);
     const { error } = await supabase
@@ -143,6 +170,29 @@ export default function AdminPanel() {
     } else {
       alert('Erro ao recusar: ' + error.message);
     }
+    setUpdatingId(null);
+  };
+
+  const handleResolveReport = async (report: ReportItem, action: 'DELETE' | 'DISMISS') => {
+    setUpdatingId(report.id);
+
+    if (action === 'DELETE') {
+      const table = report.target_type === 'POST' ? 'posts' : 'comments';
+      const { error: delErr } = await supabase.from(table).delete().eq('id', report.target_id);
+      if (delErr) {
+        alert('Erro ao excluir conteúdo: ' + delErr.message);
+        setUpdatingId(null);
+        return;
+      }
+    }
+
+    await supabase
+      .from('reports')
+      .update({ status: action === 'DELETE' ? 'RESOLVED' : 'DISMISSED' })
+      .eq('id', report.id);
+
+    alert(action === 'DELETE' ? 'Conteúdo apagado e denúncia resolvida!' : 'Denúncia ignorada.');
+    await fetchReports();
     setUpdatingId(null);
   };
 
@@ -184,16 +234,38 @@ export default function AdminPanel() {
 
   const handleRoleChange = async (userId: string, newRole: string) => {
     setUpdatingId(userId);
+    const updateData: any = { role: newRole };
+
+    if (newRole !== 'BANNED') {
+      updateData.banned_until = null;
+    }
+
     const { error } = await supabase
       .from('profiles')
-      .update({ role: newRole })
+      .update(updateData)
       .eq('id', userId);
 
     if (!error) {
-      setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole, banned_until: null } : u));
       alert(`Cargo alterado para: ${newRole}`);
     } else {
       alert('Erro ao alterar cargo: ' + error.message);
+    }
+    setUpdatingId(null);
+  };
+
+  const handleUnbanUser = async (userId: string) => {
+    setUpdatingId(userId);
+    const { error } = await supabase
+      .from('profiles')
+      .update({ role: 'USER', banned_until: null })
+      .eq('id', userId);
+
+    if (!error) {
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: 'USER', banned_until: null } : u));
+      alert('Usuário desbanido com sucesso! 🟢');
+    } else {
+      alert('Erro ao desbanir usuário: ' + error.message);
     }
     setUpdatingId(null);
   };
@@ -228,6 +300,52 @@ export default function AdminPanel() {
             GESTOR DA COMUNIDADE
           </p>
         </header>
+
+        {/* FILA DE DENÚNCIAS DO FEED */}
+        {reports.length > 0 && (
+          <section className="bg-gradient-to-b from-rose-950/80 via-[#171310] to-[#0b0907] border-2 border-rose-500/80 p-4 rounded-2xl space-y-3 shadow-[0_0_25px_rgba(244,63,94,0.3)]">
+            <div className="flex items-center gap-2 border-b border-rose-500/30 pb-2">
+              <span className="animate-pulse text-lg">🚩</span>
+              <h2 className="text-xs font-black text-rose-400 uppercase tracking-wider">
+                DENÚNCIAS PENDENTES ({reports.length})
+              </h2>
+            </div>
+
+            <div className="space-y-2.5 max-h-60 overflow-y-auto scrollbar-thin pr-1">
+              {reports.map((rep) => (
+                <div key={rep.id} className="bg-[#0a0807] border border-rose-500/30 p-3 rounded-xl space-y-2">
+                  <div className="flex justify-between items-center text-xs font-bold text-white">
+                    <span>Por: {rep.profiles?.full_name || 'Usuário'}</span>
+                    <span className="text-[9px] font-black bg-rose-500/20 text-rose-300 px-1.5 py-0.5 rounded border border-rose-500/40 uppercase">
+                      {rep.target_type}
+                    </span>
+                  </div>
+
+                  <p className="text-[10px] text-zinc-300 bg-zinc-900 p-2 rounded border border-zinc-800 italic">
+                    Motivo: "{rep.reason}"
+                  </p>
+
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      disabled={updatingId === rep.id}
+                      onClick={() => handleResolveReport(rep, 'DELETE')}
+                      className="w-1/2 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-black text-[10px] uppercase rounded cursor-pointer transition"
+                    >
+                      🗑️ APAGAR CONTEÚDO
+                    </button>
+                    <button
+                      disabled={updatingId === rep.id}
+                      onClick={() => handleResolveReport(rep, 'DISMISS')}
+                      className="w-1/2 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold text-[10px] uppercase rounded cursor-pointer transition"
+                    >
+                      IGNORAR
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* FILA DE REVISÃO DE PRINTS DE WL */}
         {pendingProofs.length > 0 && (
@@ -342,40 +460,55 @@ export default function AdminPanel() {
           </h2>
 
           <div className="space-y-2.5 max-h-[40vh] overflow-y-auto scrollbar-thin pr-1">
-            {filteredUsers.map((u) => (
-              <div 
-                key={u.id}
-                className="bg-gradient-to-r from-[#171310]/95 to-[#0b0907]/95 border border-amber-500/30 p-3 rounded-xl flex items-center justify-between shadow-md gap-3"
-              >
-                <div className="flex items-center gap-2.5 overflow-hidden">
-                  <img 
-                    src={u.avatar_url || 'https://api.dicebear.com/7.x/bottts/svg?seed=fallback'} 
-                    alt="User"
-                    className="w-9 h-9 rounded-full border border-amber-400 object-cover flex-shrink-0"
-                  />
-                  <div className="overflow-hidden">
-                    <p className="text-xs font-black text-white truncate">{u.full_name}</p>
-                    <p className="text-[10px] text-zinc-400 font-bold truncate">@{u.username || 'sem_nick'}</p>
+            {filteredUsers.map((u) => {
+              const isBanned = u.role?.toUpperCase() === 'BANNED';
+
+              return (
+                <div 
+                  key={u.id}
+                  className="bg-gradient-to-r from-[#171310]/95 to-[#0b0907]/95 border border-amber-500/30 p-3 rounded-xl flex items-center justify-between shadow-md gap-3"
+                >
+                  <div className="flex items-center gap-2.5 overflow-hidden">
+                    <img 
+                      src={u.avatar_url || 'https://api.dicebear.com/7.x/bottts/svg?seed=fallback'} 
+                      alt="User"
+                      className="w-9 h-9 rounded-full border border-amber-400 object-cover flex-shrink-0"
+                    />
+                    <div className="overflow-hidden">
+                      <p className="text-xs font-black text-white truncate">{u.full_name}</p>
+                      <p className="text-[10px] text-zinc-400 font-bold truncate">@{u.username || 'sem_nick'}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {isBanned && (
+                      <button
+                        disabled={updatingId === u.id}
+                        onClick={() => handleUnbanUser(u.id)}
+                        className="bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[9px] px-2 py-1 rounded shadow cursor-pointer transition uppercase"
+                      >
+                        🟢 UNBAN
+                      </button>
+                    )}
+
+                    <select
+                      value={u.role?.toUpperCase() || 'USER'}
+                      disabled={updatingId === u.id}
+                      onChange={(e) => handleRoleChange(u.id, e.target.value)}
+                      className="bg-[#0a0807] border border-amber-500/40 text-amber-300 font-black text-[10px] rounded-lg p-1.5 focus:outline-none cursor-pointer uppercase"
+                    >
+                      <option value="USER">⚽ USER</option>
+                      <option value="STREAMER">🔴 STREAMER</option>
+                      <option value="COACH">👨‍🏫 COACH</option>
+                      <option value="PRO">🎮 PRO PLAYER</option>
+                      <option value="ADMIN_02">🛡️ ADM 02</option>
+                      <option value="ADMIN_01">👑 ADM 01</option>
+                      <option value="BANNED">🚫 BANNED</option>
+                    </select>
                   </div>
                 </div>
-
-                <div className="flex-shrink-0">
-                  <select
-                    value={u.role?.toUpperCase() || 'USER'}
-                    disabled={updatingId === u.id}
-                    onChange={(e) => handleRoleChange(u.id, e.target.value)}
-                    className="bg-[#0a0807] border border-amber-500/40 text-amber-300 font-black text-[10px] rounded-lg p-1.5 focus:outline-none cursor-pointer uppercase"
-                  >
-                    <option value="USER">⚽ USER</option>
-                    <option value="STREAMER">🔴 STREAMER</option>
-                    <option value="COACH">👨‍🏫 COACH</option>
-                    <option value="PRO">🎮 PRO PLAYER</option>
-                    <option value="ADMIN_02">🛡️ ADM 02</option>
-                    <option value="ADMIN_01">👑 ADM 01</option>
-                  </select>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
 
