@@ -462,16 +462,20 @@ export default function Home() {
     ? Math.round(matches.reduce((acc, m) => acc + (m.possession || 50), 0) / matches.length)
     : 50;
 
+  // CÁLCULO DE RANK ATUALIZADO
   const calculateRank = (w: number) => {
-    if (w >= 19) return 'RANK 1 (19-1)';
-    if (w >= 18) return 'RANK 2 (18-2)';
-    if (w >= 16) return 'RANK 3 (16-4)';
-    if (w >= 14) return 'RANK 4 (14-6)';
-    if (w >= 11) return 'RANK 5 (11-9)';
-    if (w >= 9) return 'RANK 6 (9-11)';
-    if (w >= 6) return 'RANK 7 (6-14)';
-    if (w >= 4) return 'RANK 8 (4-16)';
-    if (w >= 2) return 'RANK 9 (2-18)';
+    if (w >= 15) return 'ELITE I';
+    if (w === 14) return 'ELITE II';
+    if (w === 13) return 'RANK I';
+    if (w === 12) return 'RANK II';
+    if (w === 11) return 'RANK III';
+    if (w === 10) return 'RANK IV';
+    if (w === 9) return 'RANK V';
+    if (w === 8) return 'RANK VI';
+    if (w === 7) return 'RANK VII';
+    if (w === 6) return 'RANK VIII';
+    if (w >= 4) return 'RANK IX';
+    if (w >= 2) return 'RANK X';
     return 'EM ANDAMENTO';
   };
 
@@ -515,6 +519,9 @@ export default function Home() {
         rank={calculateRank(wins)} 
         username={profile?.username || user?.user_metadata?.full_name || 'Jogador'} 
         avatarUrl={user?.user_metadata?.avatar_url}
+        topScorers={topScorersList}
+        topAssisters={topAssistersList}
+        topMvp={allMvpRank[0] || null}
       />
 
       {/* BACKGROUND LIMPO */}
