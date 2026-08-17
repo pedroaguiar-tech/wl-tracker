@@ -94,7 +94,7 @@ export default function Home() {
       .eq('id', sessionUser.id)
       .single();
 
-    const currentRole = existingProf?.role || 'ADMIN';
+    const currentRole = existingProf?.role || 'USER';
 
     const { data: prof, error } = await supabase.from('profiles').upsert(
       {
@@ -146,18 +146,20 @@ export default function Home() {
     }
   };
 
+  // BUSCA EXCLUSIVA DAS PARTIDAS DO USUÁRIO LOGADO
   const fetchMatches = async (userId?: string) => {
     const targetUserId = userId || user?.id;
+    if (!targetUserId) return;
+
     const { data, error } = await supabase
       .from('matches')
       .select('*')
+      .eq('user_id', targetUserId)
       .order('match_number', { ascending: true });
 
     if (!error && data) {
       setMatches(data);
-      if (targetUserId) {
-        await fetchCampaignStats(targetUserId);
-      }
+      await fetchCampaignStats(targetUserId);
     }
   };
 
@@ -240,7 +242,7 @@ export default function Home() {
 
   const handleAddOrEditMatch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!goalsFor || !goalsAgainst) return;
+    if (!goalsFor || !goalsAgainst || !user) return;
 
     setLoading(true);
     const gf = parseInt(goalsFor);
@@ -281,7 +283,7 @@ export default function Home() {
             possession: poss,
             result,
             mvp_player: mvp,
-            user_id: user?.id,
+            user_id: user.id,
           },
         ]).select().single();
 
@@ -291,7 +293,7 @@ export default function Home() {
 
       closeModal();
       await new Promise(resolve => setTimeout(resolve, 500));
-      await fetchMatches(user?.id);
+      await fetchMatches(user.id);
       
     } catch (err: any) {
       console.error(err);
@@ -465,8 +467,8 @@ export default function Home() {
   const progressPercentage = Math.min(100, (matches.length / 15) * 100);
   
   const userRoleUpper = profile?.role?.toUpperCase() || '';
-  const isStreamerOrAdmin = ['STREAMER', 'COACH', 'ADMIN'].some(r => userRoleUpper.includes(r)) || true;
-  const isAdmin = userRoleUpper.includes('ADMIN');
+  const isStreamerOrAdmin = ['STREAMER', 'COACH', 'ADMIN', 'ADM'].some(r => userRoleUpper.includes(r));
+  const isAdmin = userRoleUpper.includes('ADMIN') || userRoleUpper.includes('ADM');
 
   if (loadingUser) {
     return (
